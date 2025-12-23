@@ -14,8 +14,10 @@ const DEFAULT_PILLARS = [
 const CommandTerminal = () => {
     const sceneRef = useRef(null);
     const engineRef = useRef(null);
+    const renderRef = useRef(null);
     const boxRefs = useRef({});
     const inputRef = useRef(null);
+    const runnerRef = useRef(null);
 
     // Load from local storage or use default
     const [pillars, setPillars] = useState(() => {
@@ -58,13 +60,12 @@ const CommandTerminal = () => {
         localStorage.setItem('command-terminal-nodes', JSON.stringify(toSave));
     }, [pillars]);
 
-    // Reset logic if pillars are broken (e.g. only 1 shows up)
+    // Force 4 pillars if state gets weird check
     useEffect(() => {
-        // If we have fewer than 1 pillar or state looks weird, auto-reset to defaults
-        if (pillars.length === 0 || (pillars.length < DEFAULT_PILLARS.length && !localStorage.getItem('command-terminal-nodes'))) {
+        if (pillars.length === 0) {
             setPillars(DEFAULT_PILLARS);
         }
-    }, []);
+    }, [pillars]);
 
     const handleAddNode = (newNode) => {
         const id = `custom-${Date.now()}`;
@@ -78,6 +79,8 @@ const CommandTerminal = () => {
             localStorage.removeItem('command-terminal-nodes');
             setPillars(DEFAULT_PILLARS);
             setInputText('');
+            // Force reload
+            window.location.reload();
         }
     }, [inputText]);
 
@@ -101,7 +104,6 @@ const CommandTerminal = () => {
             Matter.Body.applyForce(body, body.position, { x: 0, y: -0.05 });
             Matter.Body.setAngularVelocity(body, 0.1);
         }
-        // Small delay to see animation
         setTimeout(() => window.open(pillar.url, '_blank'), 150);
     };
 
@@ -110,7 +112,6 @@ const CommandTerminal = () => {
         if (!inputText.trim()) return;
 
         if (searchMode === 'NAVIGATE') {
-            // Find matched pillar
             const match = pillars.find(p => p.label.toLowerCase().includes(inputText.toLowerCase()) ||
                 p.sub.toLowerCase().includes(inputText.toLowerCase()));
             if (match) {
@@ -118,13 +119,27 @@ const CommandTerminal = () => {
                 setInputText('');
             }
         } else {
-            // Search Substack
             window.open(`https://substack.com/search/${encodeURIComponent(inputText)}`, '_blank');
             setInputText('');
         }
     };
 
     useEffect(() => {
+        if (!sceneRef.current) return;
+
+        // Cleanup previous instance if exists (React StrictMode fix)
+        if (engineRef.current) {
+            Matter.World.clear(engineRef.current.world);
+            Matter.Engine.clear(engineRef.current);
+        }
+        if (renderRef.current) {
+            Matter.Render.stop(renderRef.current);
+            renderRef.current.canvas.remove();
+        }
+        if (runnerRef.current) {
+            Matter.Runner.stop(runnerRef.current);
+        }
+
         const Engine = Matter.Engine,
             Render = Matter.Render,
             World = Matter.World,
@@ -148,36 +163,43 @@ const CommandTerminal = () => {
                 pixelRatio: window.devicePixelRatio
             }
         });
+        renderRef.current = render;
+
+        // Viewport
+        const height = window.innerHeight;
+        const width = window.innerWidth;
 
         // Bounds
-        const wallThickness = 60;
-        const ground = Bodies.rectangle(window.innerWidth / 2, window.innerHeight + wallThickness / 2 - 10, window.innerWidth, wallThickness, {
+        const wallThickness = 100;
+        const ground = Bodies.rectangle(width / 2, height + wallThickness / 2 - 10, width, wallThickness, {
             isStatic: true,
             render: { fillStyle: '#00ff41' }
         });
-        const leftWall = Bodies.rectangle(0 - wallThickness / 2, window.innerHeight / 2, wallThickness, window.innerHeight * 5, { isStatic: true });
-        const rightWall = Bodies.rectangle(window.innerWidth + wallThickness / 2, window.innerHeight / 2, wallThickness, window.innerHeight * 5, { isStatic: true });
+        const leftWall = Bodies.rectangle(0 - wallThickness / 2, height / 2, wallThickness, height * 5, { isStatic: true });
+        const rightWall = Bodies.rectangle(width + wallThickness / 2, height / 2, wallThickness, height * 5, { isStatic: true });
 
         World.add(engine.world, [ground, leftWall, rightWall]);
 
         // Add Pillar Bodies
-        // Important: use index to stagger
         const bodies = pillars.map((p, i) => {
-            const x = (window.innerWidth / (pillars.length + 1)) * (i + 1);
-            const y = -200 - (i * 120);
-            const width = 180;
-            const height = 120;
+            const x = (width / (pillars.length + 1)) * (i + 1);
+            const y = -100 - (i * 200);
+            const boxWidth = 180;
+            const boxHeight = 120;
 
-            return Bodies.rectangle(x, y, width, height, {
+            return Bodies.rectangle(x, y, boxWidth, boxHeight, {
                 label: p.id,
                 chamfer: { radius: 4 },
                 restitution: 0.5,
                 friction: 0.5,
+                density: 0.001,
                 render: { visible: false }
             });
         });
 
-        World.add(engine.world, bodies);
+        if (bodies.length > 0) {
+            World.add(engine.world, bodies);
+        }
 
         const mouse = Mouse.create(render.canvas);
         const mouseConstraint = MouseConstraint.create(engine, {
@@ -188,11 +210,11 @@ const CommandTerminal = () => {
             }
         });
 
-        // We KEEP mouse constraint for physics interaction (dragging if needed)
-        // But for clicking, we rely on the DOM element onClick
         World.add(engine.world, mouseConstraint);
 
-        Matter.Runner.run(engine);
+        const runner = Runner.create();
+        runnerRef.current = runner;
+        Runner.run(runner, engine);
         Render.run(render);
 
         const syncLoop = () => {
@@ -201,7 +223,10 @@ const CommandTerminal = () => {
                 if (el) {
                     const { x, y } = body.position;
                     const angle = body.angle;
-                    el.style.transform = `translate(${x - 90}px, ${y - 60}px) rotate(${angle}rad)`;
+                    if (x !== undefined && y !== undefined) {
+                        el.style.transform = `translate(${x - 90}px, ${y - 60}px) rotate(${angle}rad)`;
+                        el.style.opacity = 1;
+                    }
                 }
             });
         };
@@ -210,56 +235,65 @@ const CommandTerminal = () => {
         const handleResize = () => {
             render.canvas.width = window.innerWidth;
             render.canvas.height = window.innerHeight;
-            Matter.Body.setPosition(ground, { x: window.innerWidth / 2, y: window.innerHeight + wallThickness / 2 - 10 });
-            Matter.Body.setPosition(rightWall, { x: window.innerWidth + wallThickness / 2, y: window.innerHeight / 2 });
+            Matter.Body.setPosition(ground, {
+                x: window.innerWidth / 2,
+                y: window.innerHeight + wallThickness / 2 - 10
+            });
+            Matter.Body.setPosition(rightWall, {
+                x: window.innerWidth + wallThickness / 2,
+                y: window.innerHeight / 2
+            });
         };
         window.addEventListener('resize', handleResize);
 
         return () => {
             window.removeEventListener('resize', handleResize);
-            Render.stop(render);
-            Runner.stop(engine);
+            if (renderRef.current) {
+                Render.stop(renderRef.current);
+                renderRef.current.canvas.remove();
+            }
+            if (runnerRef.current) {
+                Runner.stop(runnerRef.current);
+            }
             if (engineRef.current) {
                 World.clear(engineRef.current.world);
                 Engine.clear(engineRef.current);
             }
-            boxRefs.current = {};
         };
     }, [pillars]);
 
     return (
-        <div ref={sceneRef} className="absolute inset-0 bg-transparent z-10 overflow-hidden">
-            {pillars.map((p) => (
-                <div
-                    key={p.id}
-                    ref={el => boxRefs.current[p.id] = el}
-                    onClick={() => openPillar(p)}
-                    className="absolute top-0 left-0 w-[180px] h-[120px] rounded-lg
-                             flex flex-col items-center justify-center p-4
-                             shadow-[0_0_20px_rgba(0,0,0,0.8)] select-none will-change-transform
-                             transition-colors duration-200 cursor-pointer pointer-events-auto"
-                    style={{
-                        backgroundColor: '#000000',
-                        border: `2px solid ${p.color}`,
-                        // Highlighting logic
-                        borderColor: (searchMode === 'NAVIGATE' && inputText && (p.label.toLowerCase().includes(inputText.toLowerCase()) || p.sub.toLowerCase().includes(inputText.toLowerCase())))
-                            ? '#ffffff' : p.color,
-                        boxShadow: (searchMode === 'NAVIGATE' && inputText && (p.label.toLowerCase().includes(inputText.toLowerCase()) || p.sub.toLowerCase().includes(inputText.toLowerCase())))
-                            ? `0 0 30px ${p.color}` : `0 0 10px ${p.color}44`
-                    }}
-                >
-                    <p.icon size={28} style={{ color: p.color }} className="mb-2 drop-shadow-md" />
-                    <h3 className="text-white font-black text-base tracking-wider text-center leading-tight drop-shadow-sm">{p.label}</h3>
-                    <p className="text-xs text-gray-400 mt-1 truncate max-w-full font-bold">{p.sub}</p>
-                </div>
-            ))}
+        <div className="relative w-full h-[100dvh] bg-transparent overflow-hidden">
+            <div ref={sceneRef} className="absolute inset-0 z-0" />
 
-            {/* Command Bar Area: Moved higher up (bottom-24) to avoid mobile safe area/keyboard overlap */}
-            <div className="absolute bottom-24 sm:bottom-12 left-1/2 -translate-x-1/2 z-50 w-full max-w-lg px-4 flex flex-col space-y-3 pointer-events-none">
+            <div className="absolute inset-0 z-10 pointer-events-none">
+                {pillars.map((p) => (
+                    <div
+                        key={p.id}
+                        ref={el => boxRefs.current[p.id] = el}
+                        onClick={() => openPillar(p)}
+                        className="absolute top-0 left-0 w-[180px] h-[120px] rounded-lg
+                                 flex flex-col items-center justify-center p-4
+                                 shadow-[0_0_20px_rgba(0,0,0,0.8)] select-none will-change-transform
+                                 transition-colors duration-200 cursor-pointer pointer-events-auto opacity-0"
+                        style={{
+                            backgroundColor: '#000000',
+                            border: `2px solid ${p.color}`,
+                            borderColor: (searchMode === 'NAVIGATE' && inputText && (p.label.toLowerCase().includes(inputText.toLowerCase()) || p.sub.toLowerCase().includes(inputText.toLowerCase())))
+                                ? '#ffffff' : p.color,
+                            boxShadow: (searchMode === 'NAVIGATE' && inputText && (p.label.toLowerCase().includes(inputText.toLowerCase()) || p.sub.toLowerCase().includes(inputText.toLowerCase())))
+                                ? `0 0 30px ${p.color}` : `0 0 10px ${p.color}44`
+                        }}
+                    >
+                        <p.icon size={28} style={{ color: p.color }} className="mb-2 drop-shadow-md" />
+                        <h3 className="text-white font-black text-base tracking-wider text-center leading-tight drop-shadow-sm">{p.label}</h3>
+                        <p className="text-xs text-gray-400 mt-1 truncate max-w-full font-bold">{p.sub}</p>
+                    </div>
+                ))}
+            </div>
 
-                {/* Controls Container - Enable pointer events only for children */}
+            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-50 w-full max-w-lg px-4 flex flex-col space-y-3 pointer-events-none">
                 <div className="pointer-events-auto w-full flex flex-col items-center space-y-3">
-                    {/* Toggle Switch */}
                     <div className="flex justify-center space-x-1 bg-black/80 backdrop-blur border border-gray-800 rounded-full p-1 w-max mx-auto shadow-lg">
                         <button
                             onClick={() => setSearchMode('NAVIGATE')}
@@ -279,7 +313,6 @@ const CommandTerminal = () => {
                         </button>
                     </div>
 
-                    {/* Input Bar */}
                     <form onSubmit={handleCommandSubmit} className="relative w-full group shadow-2xl">
                         <div className={`absolute inset-0 rounded-xl transition-opacity duration-300 opacity-20 pointer-events-none
                                        ${searchMode === 'SEARCH' ? 'bg-terminal-green blur-md' : 'bg-white blur-md'}`}></div>
@@ -291,8 +324,8 @@ const CommandTerminal = () => {
                             onChange={(e) => setInputText(e.target.value)}
                             placeholder={searchMode === 'NAVIGATE' ? "TYPE TO NAVIGATE..." : "SEARCH WEB..."}
                             className="w-full bg-black/95 text-white font-mono text-base p-4 pr-12 rounded-xl border border-gray-700 
-                                     focus:outline-none focus:border-white focus:ring-1 focus:ring-white/50 transition-all"
-                            style={{ fontSize: '16px' }} // Prevent iOS zoom on focus
+                                     focus:outline-none focus:border-white focus:ring-1 focus:ring-white/50 transition-all font-bold tracking-wider"
+                            style={{ fontSize: '16px' }}
                         />
 
                         <button
