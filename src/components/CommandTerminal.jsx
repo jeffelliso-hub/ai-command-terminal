@@ -15,16 +15,23 @@ const CommandTerminal = () => {
     const sceneRef = useRef(null);
     const engineRef = useRef(null);
     const boxRefs = useRef({});
+    const inputRef = useRef(null);
 
     // Load from local storage or use default
     const [pillars, setPillars] = useState(() => {
         const saved = localStorage.getItem('command-terminal-nodes');
         if (saved) {
-            const parsed = JSON.parse(saved);
-            return parsed.map(p => ({
-                ...p,
-                icon: p.isCustom ? Brain : DEFAULT_PILLARS.find(d => d.id === p.id)?.icon || Brain
-            }));
+            try {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length >= 1) {
+                    return parsed.map(p => ({
+                        ...p,
+                        icon: p.isCustom ? Brain : DEFAULT_PILLARS.find(d => d.id === p.id)?.icon || Brain
+                    }));
+                }
+            } catch (e) {
+                console.error("Local storage error", e);
+            }
         }
         return DEFAULT_PILLARS;
     });
@@ -35,6 +42,13 @@ const CommandTerminal = () => {
     const [inputText, setInputText] = useState('');
     const [searchMode, setSearchMode] = useState('NAVIGATE'); // 'NAVIGATE' | 'SEARCH'
 
+    // Focus input when mode changes
+    useEffect(() => {
+        if (inputRef.current) {
+            inputRef.current.focus();
+        }
+    }, [searchMode]);
+
     // Save to local storage
     useEffect(() => {
         const toSave = pillars.map(p => ({
@@ -44,11 +58,28 @@ const CommandTerminal = () => {
         localStorage.setItem('command-terminal-nodes', JSON.stringify(toSave));
     }, [pillars]);
 
+    // Reset logic if pillars are broken (e.g. only 1 shows up)
+    useEffect(() => {
+        // If we have fewer than 1 pillar or state looks weird, auto-reset to defaults
+        if (pillars.length === 0 || (pillars.length < DEFAULT_PILLARS.length && !localStorage.getItem('command-terminal-nodes'))) {
+            setPillars(DEFAULT_PILLARS);
+        }
+    }, []);
+
     const handleAddNode = (newNode) => {
         const id = `custom-${Date.now()}`;
         const node = { ...newNode, id, isCustom: true };
         setPillars(prev => [...prev, node]);
     };
+
+    // Emergency Reset Trigger
+    useEffect(() => {
+        if (inputText === '/reset') {
+            localStorage.removeItem('command-terminal-nodes');
+            setPillars(DEFAULT_PILLARS);
+            setInputText('');
+        }
+    }, [inputText]);
 
     // Voice Control
     const commands = useMemo(() => {
@@ -70,7 +101,8 @@ const CommandTerminal = () => {
             Matter.Body.applyForce(body, body.position, { x: 0, y: -0.05 });
             Matter.Body.setAngularVelocity(body, 0.1);
         }
-        setTimeout(() => window.open(pillar.url, '_blank'), 300);
+        // Small delay to see animation
+        setTimeout(() => window.open(pillar.url, '_blank'), 150);
     };
 
     const handleCommandSubmit = (e) => {
@@ -126,19 +158,19 @@ const CommandTerminal = () => {
         const leftWall = Bodies.rectangle(0 - wallThickness / 2, window.innerHeight / 2, wallThickness, window.innerHeight * 5, { isStatic: true });
         const rightWall = Bodies.rectangle(window.innerWidth + wallThickness / 2, window.innerHeight / 2, wallThickness, window.innerHeight * 5, { isStatic: true });
 
-        // Roof to keep them in? No, let them fall from sky.
         World.add(engine.world, [ground, leftWall, rightWall]);
 
         // Add Pillar Bodies
+        // Important: use index to stagger
         const bodies = pillars.map((p, i) => {
             const x = (window.innerWidth / (pillars.length + 1)) * (i + 1);
-            const y = -200 - (i * 100);
+            const y = -200 - (i * 120);
             const width = 180;
             const height = 120;
 
             return Bodies.rectangle(x, y, width, height, {
                 label: p.id,
-                chamfer: { radius: 4 }, // Sharper corners for "Solid" look
+                chamfer: { radius: 4 },
                 restitution: 0.5,
                 friction: 0.5,
                 render: { visible: false }
@@ -156,26 +188,10 @@ const CommandTerminal = () => {
             }
         });
 
-        // Click Handling via Matter
-        let clickStart = 0;
-        Events.on(mouseConstraint, 'mousedown', (event) => {
-            clickStart = Date.now();
-        });
-        Events.on(mouseConstraint, 'mouseup', (event) => {
-            if (Date.now() - clickStart < 200) {
-                const mousePosition = event.mouse.position;
-                const bodies = Matter.Query.point(engine.world.bodies, mousePosition);
-                if (bodies.length > 0) {
-                    const body = bodies[0];
-                    const pillar = pillars.find(p => p.id === body.label);
-                    if (pillar) {
-                        openPillar(pillar);
-                    }
-                }
-            }
-        });
-
+        // We KEEP mouse constraint for physics interaction (dragging if needed)
+        // But for clicking, we rely on the DOM element onClick
         World.add(engine.world, mouseConstraint);
+
         Matter.Runner.run(engine);
         Render.run(render);
 
@@ -217,14 +233,15 @@ const CommandTerminal = () => {
                 <div
                     key={p.id}
                     ref={el => boxRefs.current[p.id] = el}
+                    onClick={() => openPillar(p)}
                     className="absolute top-0 left-0 w-[180px] h-[120px] rounded-lg
                              flex flex-col items-center justify-center p-4
-                             shadow-[0_0_20px_rgba(0,0,0,0.8)] select-none pointer-events-none will-change-transform
-                             transition-colors duration-200"
+                             shadow-[0_0_20px_rgba(0,0,0,0.8)] select-none will-change-transform
+                             transition-colors duration-200 cursor-pointer pointer-events-auto"
                     style={{
-                        backgroundColor: '#000000', // Solid Black
-                        border: `2px solid ${p.color}`, // High contrast border
-                        // If navigating and text matches, highlight
+                        backgroundColor: '#000000',
+                        border: `2px solid ${p.color}`,
+                        // Highlighting logic
                         borderColor: (searchMode === 'NAVIGATE' && inputText && (p.label.toLowerCase().includes(inputText.toLowerCase()) || p.sub.toLowerCase().includes(inputText.toLowerCase())))
                             ? '#ffffff' : p.color,
                         boxShadow: (searchMode === 'NAVIGATE' && inputText && (p.label.toLowerCase().includes(inputText.toLowerCase()) || p.sub.toLowerCase().includes(inputText.toLowerCase())))
@@ -237,55 +254,60 @@ const CommandTerminal = () => {
                 </div>
             ))}
 
-            {/* Command Bar Area */}
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 w-full max-w-lg px-4 flex flex-col space-y-3">
+            {/* Command Bar Area: Moved higher up (bottom-24) to avoid mobile safe area/keyboard overlap */}
+            <div className="absolute bottom-24 sm:bottom-12 left-1/2 -translate-x-1/2 z-50 w-full max-w-lg px-4 flex flex-col space-y-3 pointer-events-none">
 
-                {/* Toggle Switch */}
-                <div className="flex justify-center space-x-1 bg-black/80 backdrop-blur border border-gray-800 rounded-full p-1 w-max mx-auto">
-                    <button
-                        onClick={() => setSearchMode('NAVIGATE')}
-                        className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-widest transition-all flex items-center space-x-2
-                                  ${searchMode === 'NAVIGATE' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
-                    >
-                        <Navigation size={12} />
-                        <span>NAVIGATE</span>
-                    </button>
-                    <button
-                        onClick={() => setSearchMode('SEARCH')}
-                        className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-widest transition-all flex items-center space-x-2
-                                  ${searchMode === 'SEARCH' ? 'bg-terminal-green text-black shadow-[0_0_10px_rgba(0,255,65,0.4)]' : 'text-gray-500 hover:text-gray-300'}`}
-                    >
-                        <Search size={12} />
-                        <span>SEARCH</span>
-                    </button>
+                {/* Controls Container - Enable pointer events only for children */}
+                <div className="pointer-events-auto w-full flex flex-col items-center space-y-3">
+                    {/* Toggle Switch */}
+                    <div className="flex justify-center space-x-1 bg-black/80 backdrop-blur border border-gray-800 rounded-full p-1 w-max mx-auto shadow-lg">
+                        <button
+                            onClick={() => setSearchMode('NAVIGATE')}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-widest transition-all flex items-center space-x-2
+                                      ${searchMode === 'NAVIGATE' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                        >
+                            <Navigation size={12} />
+                            <span>NAVIGATE</span>
+                        </button>
+                        <button
+                            onClick={() => setSearchMode('SEARCH')}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-widest transition-all flex items-center space-x-2
+                                      ${searchMode === 'SEARCH' ? 'bg-terminal-green text-black shadow-[0_0_10px_rgba(0,255,65,0.4)]' : 'text-gray-500 hover:text-gray-300'}`}
+                        >
+                            <Search size={12} />
+                            <span>SEARCH</span>
+                        </button>
+                    </div>
+
+                    {/* Input Bar */}
+                    <form onSubmit={handleCommandSubmit} className="relative w-full group shadow-2xl">
+                        <div className={`absolute inset-0 rounded-xl transition-opacity duration-300 opacity-20 pointer-events-none
+                                       ${searchMode === 'SEARCH' ? 'bg-terminal-green blur-md' : 'bg-white blur-md'}`}></div>
+
+                        <input
+                            ref={inputRef}
+                            type="text"
+                            value={inputText}
+                            onChange={(e) => setInputText(e.target.value)}
+                            placeholder={searchMode === 'NAVIGATE' ? "TYPE TO NAVIGATE..." : "SEARCH WEB..."}
+                            className="w-full bg-black/95 text-white font-mono text-base p-4 pr-12 rounded-xl border border-gray-700 
+                                     focus:outline-none focus:border-white focus:ring-1 focus:ring-white/50 transition-all"
+                            style={{ fontSize: '16px' }} // Prevent iOS zoom on focus
+                        />
+
+                        <button
+                            type="button"
+                            onClick={startListening}
+                            className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors
+                                      ${isListening ? 'text-terminal-green animate-pulse' : 'text-gray-500 hover:text-white'}`}
+                        >
+                            {isListening ? <Mic size={24} /> : <MicOff size={24} />}
+                        </button>
+                    </form>
                 </div>
 
-                {/* Input Bar */}
-                <form onSubmit={handleCommandSubmit} className="relative w-full group">
-                    <div className={`absolute inset-0 rounded-xl transition-opacity duration-300 opacity-20 pointer-events-none
-                                   ${searchMode === 'SEARCH' ? 'bg-terminal-green blur-md' : 'bg-white blur-md'}`}></div>
-
-                    <input
-                        type="text"
-                        value={inputText}
-                        onChange={(e) => setInputText(e.target.value)}
-                        placeholder={searchMode === 'NAVIGATE' ? "TYPE TO NAVIGATE (E.G. 'STRATEGY')..." : "SEARCH SUBSTACK / WEB..."}
-                        className="w-full bg-black/90 text-white font-mono text-sm p-4 pr-12 rounded-xl border border-gray-700 
-                                 focus:outline-none focus:border-white focus:ring-1 focus:ring-white/50 transition-all shadow-2xl"
-                    />
-
-                    <button
-                        type="button"
-                        onClick={startListening}
-                        className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors
-                                  ${isListening ? 'text-terminal-green animate-pulse' : 'text-gray-500 hover:text-white'}`}
-                    >
-                        {isListening ? <Mic size={20} /> : <MicOff size={20} />}
-                    </button>
-                </form>
-
                 {lastTranscript && (
-                    <div className="text-center">
+                    <div className="text-center pointer-events-auto">
                         <span className="text-[10px] text-gray-500 font-mono bg-black/50 px-2 py-1 rounded">HEARD: "{lastTranscript}"</span>
                     </div>
                 )}
@@ -293,7 +315,7 @@ const CommandTerminal = () => {
 
             <button
                 onClick={() => setIsModalOpen(true)}
-                className="absolute top-4 right-4 z-30 flex items-center space-x-1 text-gray-500 hover:text-terminal-green transition-colors bg-black/30 p-2 rounded border border-transparent hover:border-terminal-green/30"
+                className="absolute top-4 right-4 z-30 flex items-center space-x-1 text-gray-500 hover:text-terminal-green transition-colors bg-black/30 p-2 rounded border border-transparent hover:border-terminal-green/30 pointer-events-auto"
             >
                 <Plus size={16} />
                 <span className="text-xs font-mono tracking-widest hidden sm:inline">ADD NODE</span>
