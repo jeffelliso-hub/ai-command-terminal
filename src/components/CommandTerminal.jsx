@@ -171,7 +171,9 @@ const CommandTerminal = () => {
 
         // Bounds
         const wallThickness = 100;
-        const ground = Bodies.rectangle(width / 2, height + wallThickness / 2 - 10, width, wallThickness, {
+        // RAISED GROUND: Position it 180px from bottom so blocks sit ABOVE the search bar
+        const groundY = height - 180;
+        const ground = Bodies.rectangle(width / 2, groundY + wallThickness / 2, width, wallThickness, {
             isStatic: true,
             render: { fillStyle: '#00ff41' }
         });
@@ -237,7 +239,7 @@ const CommandTerminal = () => {
             render.canvas.height = window.innerHeight;
             Matter.Body.setPosition(ground, {
                 x: window.innerWidth / 2,
-                y: window.innerHeight + wallThickness / 2 - 10
+                y: window.innerHeight - 180 + wallThickness / 2
             });
             Matter.Body.setPosition(rightWall, {
                 x: window.innerWidth + wallThickness / 2,
