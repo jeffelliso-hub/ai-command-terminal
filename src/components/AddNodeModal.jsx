@@ -44,7 +44,7 @@ const AddNodeModal = ({ isOpen, onClose, onAdd }) => {
                         className="bg-matte-black border border-terminal-green w-full max-w-md p-6 rounded-xl shadow-[0_0_30px_rgba(0,255,65,0.2)]"
                     >
                         <div className="flex justify-between items-center mb-6 border-b border-gray-800 pb-2">
-                            <h2 className="text-terminal-green font-mono text-lg tracking-wider">> ADD_NEW_NODE</h2>
+                            <h2 className="text-terminal-green font-mono text-lg tracking-wider">&gt; ADD_NEW_NODE</h2>
                             <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
                                 <X size={20} />
                             </button>
