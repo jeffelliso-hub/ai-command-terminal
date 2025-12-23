@@ -60,7 +60,7 @@ const IntroSequence = ({ onComplete }) => {
     }, [onComplete]);
 
     return (
-        <div className="fixed inset-0 z-50 bg-matte-black text-terminal-green font-mono overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-black text-terminal-green font-mono overflow-hidden">
             <canvas ref={canvasRef} className="absolute inset-0 opacity-40" />
 
             <AnimatePresence>

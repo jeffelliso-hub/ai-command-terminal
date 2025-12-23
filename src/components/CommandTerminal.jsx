@@ -186,8 +186,8 @@ const CommandTerminal = () => {
         const bodies = pillars.map((p, i) => {
             const x = (width / (pillars.length + 1)) * (i + 1);
             const y = -100 - (i * 200);
-            const boxWidth = 180;
-            const boxHeight = 120;
+            const boxWidth = 140;  // Reduced from 180 for mobile
+            const boxHeight = 100; // Reduced from 120 for mobile
 
             return Bodies.rectangle(x, y, boxWidth, boxHeight, {
                 label: p.id,
@@ -226,7 +226,7 @@ const CommandTerminal = () => {
                     const { x, y } = body.position;
                     const angle = body.angle;
                     if (x !== undefined && y !== undefined) {
-                        el.style.transform = `translate(${x - 90}px, ${y - 60}px) rotate(${angle}rad)`;
+                        el.style.transform = `translate(${x - 70}px, ${y - 50}px) rotate(${angle}rad)`;
                         el.style.opacity = 1;
                     }
                 }
@@ -274,8 +274,8 @@ const CommandTerminal = () => {
                         key={p.id}
                         ref={el => boxRefs.current[p.id] = el}
                         onClick={() => openPillar(p)}
-                        className="absolute top-0 left-0 w-[180px] h-[120px] rounded-lg
-                                 flex flex-col items-center justify-center p-4
+                        className="absolute top-0 left-0 w-[140px] h-[100px] rounded-lg
+                                 flex flex-col items-center justify-center p-3
                                  shadow-[0_0_20px_rgba(0,0,0,0.8)] select-none will-change-transform
                                  transition-colors duration-200 cursor-pointer pointer-events-auto opacity-0"
                         style={{
@@ -287,9 +287,9 @@ const CommandTerminal = () => {
                                 ? `0 0 30px ${p.color}` : `0 0 10px ${p.color}44`
                         }}
                     >
-                        <p.icon size={28} style={{ color: p.color }} className="mb-2 drop-shadow-md" />
-                        <h3 className="text-white font-black text-base tracking-wider text-center leading-tight drop-shadow-sm">{p.label}</h3>
-                        <p className="text-xs text-gray-400 mt-1 truncate max-w-full font-bold">{p.sub}</p>
+                        <p.icon size={24} style={{ color: p.color }} className="mb-1 drop-shadow-md" />
+                        <h3 className="text-white font-black text-sm tracking-wider text-center leading-tight drop-shadow-sm">{p.label}</h3>
+                        <p className="text-[10px] text-gray-400 mt-0.5 truncate max-w-full font-bold">{p.sub}</p>
                     </div>
                 ))}
             </div>
