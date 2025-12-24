@@ -232,6 +232,33 @@ const CommandTerminal = () => {
 
         World.add(engine.world, mouseConstraint);
 
+        // Double-tap detection through Matter.js events
+        let lastClickTime = 0;
+        let lastClickedBody = null;
+
+        Events.on(mouseConstraint, 'mousedown', (event) => {
+            const now = Date.now();
+            const timeSinceLastClick = now - lastClickTime;
+
+            // Check if we clicked on a body
+            const bodies = Matter.Query.point(engine.world.bodies, event.mouse.position);
+            const clickedBody = bodies.find(b => b.label && pillars.find(p => p.id === b.label));
+
+            if (clickedBody && clickedBody === lastClickedBody && timeSinceLastClick < 300) {
+                // Double-tap detected!
+                const pillar = pillars.find(p => p.id === clickedBody.label);
+                if (pillar) {
+                    openPillar(pillar);
+                    lastClickTime = 0;
+                    lastClickedBody = null;
+                    return;
+                }
+            }
+
+            lastClickTime = now;
+            lastClickedBody = clickedBody || null;
+        });
+
         const runner = Runner.create();
         runnerRef.current = runner;
         Runner.run(runner, engine);
@@ -291,8 +318,6 @@ const CommandTerminal = () => {
                     <div
                         key={p.id}
                         ref={el => boxRefs.current[p.id] = el}
-                        onClick={() => handleDoubleTap(p)}
-                        onTouchEnd={() => handleDoubleTap(p)}
                         className="absolute top-0 left-0 w-[140px] h-[100px] rounded-lg
                                  flex flex-col items-center justify-center p-3
                                  shadow-[0_0_20px_rgba(0,0,0,0.8)] select-none will-change-transform
