@@ -204,6 +204,8 @@ const CommandTerminal = () => {
         }
 
         const mouse = Mouse.create(render.canvas);
+        mouse.pixelRatio = window.devicePixelRatio; // Fix for touch on high DPI screens
+
         const mouseConstraint = MouseConstraint.create(engine, {
             mouse: mouse,
             constraint: {
@@ -274,10 +276,14 @@ const CommandTerminal = () => {
                         key={p.id}
                         ref={el => boxRefs.current[p.id] = el}
                         onClick={() => openPillar(p)}
+                        onTouchStart={(e) => {
+                            // Prevent default to allow physics drag
+                            e.stopPropagation();
+                        }}
                         className="absolute top-0 left-0 w-[140px] h-[100px] rounded-lg
                                  flex flex-col items-center justify-center p-3
                                  shadow-[0_0_20px_rgba(0,0,0,0.8)] select-none will-change-transform
-                                 transition-colors duration-200 cursor-pointer pointer-events-auto opacity-0"
+                                 transition-colors duration-200 cursor-pointer pointer-events-none opacity-0"
                         style={{
                             backgroundColor: '#000000',
                             border: `2px solid ${p.color}`,
