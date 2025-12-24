@@ -18,6 +18,7 @@ const CommandTerminal = () => {
     const boxRefs = useRef({});
     const inputRef = useRef(null);
     const runnerRef = useRef(null);
+    const lastTapTime = useRef({});  // Track last tap time for each pillar
 
     // Load from local storage or use default
     const [pillars, setPillars] = useState(() => {
@@ -105,6 +106,21 @@ const CommandTerminal = () => {
             Matter.Body.setAngularVelocity(body, 0.1);
         }
         setTimeout(() => window.open(pillar.url, '_blank'), 150);
+    };
+
+    const handleDoubleTap = (pillar) => {
+        const now = Date.now();
+        const lastTap = lastTapTime.current[pillar.id] || 0;
+        const timeSinceLastTap = now - lastTap;
+
+        if (timeSinceLastTap < 300 && timeSinceLastTap > 0) {
+            // Double tap detected
+            openPillar(pillar);
+            lastTapTime.current[pillar.id] = 0; // Reset
+        } else {
+            // Single tap - just update the timestamp
+            lastTapTime.current[pillar.id] = now;
+        }
     };
 
     const handleCommandSubmit = (e) => {
@@ -275,11 +291,8 @@ const CommandTerminal = () => {
                     <div
                         key={p.id}
                         ref={el => boxRefs.current[p.id] = el}
-                        onClick={() => openPillar(p)}
-                        onTouchStart={(e) => {
-                            // Prevent default to allow physics drag
-                            e.stopPropagation();
-                        }}
+                        onClick={() => handleDoubleTap(p)}
+                        onTouchEnd={() => handleDoubleTap(p)}
                         className="absolute top-0 left-0 w-[140px] h-[100px] rounded-lg
                                  flex flex-col items-center justify-center p-3
                                  shadow-[0_0_20px_rgba(0,0,0,0.8)] select-none will-change-transform
